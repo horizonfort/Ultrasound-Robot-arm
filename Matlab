@@ -1,0 +1,96 @@
+clear all
+s = serialport("COM6",115200);
+set(s, "InputBufferSize", 8)
+
+% Define the DH parameters
+
+a = [0; 300; 229.81; 0; 0; 0; 0];
+alpha = [-90; 0; -90; 90; 90; 90; 0];
+d = [0; 0; 0; 262.24; 0; 0; 200];
+theta = [0; 0; 0; 0; 0; 0; 0];
+
+% Define the filter parameters
+fc = 5; % cutoff frequency in Hz
+fs = 1000; % sampling frequency in Hz
+n = 4; % filter order
+[b, a] = butter(n, fc/(fs/2)); % compute filter coefficients
+    
+% Define the number of DOF
+dof = 7;
+record = [];
+
+% Initialize the figure and hold on
+lim = 1000;
+
+figure(1);
+linexz = animatedline('Color', 'b', 'MaximumNumPoints', 50);
+xlabel('x');
+ylabel('z');
+axis([-lim lim -lim lim -lim lim]); % Set the limits of the plot
+
+figure(2);
+linexy = animatedline('Color', 'r', 'MaximumNumPoints', 50);
+xlabel('x');
+ylabel('y');
+axis([-lim lim -lim lim -lim lim]); % Set the limits of the plot
+
+
+% Loop over the number of frames
+while (true)
+
+    tic;
+
+    data = fgetl(s);
+    data = split(data, ",");
+
+    theta(1) = str2double(data(1));
+    theta(2) = str2double(data(2))+30;
+    theta(3) = 101.32-str2double(data(3));
+    theta(4) = str2double(data(4));
+    theta(5) = 90+str2double(data(5));
+    theta(6) = 90+str2double(data(6));
+    interval = 0.001*(str2double(data(7)));
+
+    theta(5) = filtfilt(b, a, deg2rad(theta(5)));
+    theta(6) = filtfilt(b, a, deg2rad(theta(6)));
+    
+
+    % Define the transformation matrices for each joint
+    T = cell(dof, 1);
+    for i = 1:dof
+        T{i} = DH_transform(theta(i), d(i), a(i), alpha(i));
+    end
+    
+    % Compute the end effector position
+    end_effector = eye(4);
+    for i = 1:dof
+        end_effector = end_effector * T{i};
+    end
+
+    % Define the position of the end effector
+    x = end_effector(1,4);
+    y = end_effector(2,4);
+    z = end_effector(3,4);
+
+    
+    % Add the new point to the line
+    addpoints(linexz, x, -z);
+    addpoints(linexy, x, y);
+    drawnow;
+    
+    elapsedTime = toc;
+    
+    disp(theta(5))
+    % Pause for a short time to reduce the latency
+    %pause(0.01);
+
+end
+
+function T = DH_transform(theta, d, a, alpha)
+
+% Construct the DH transformation matrix
+T = [cosd(theta), -sind(theta)*cosd(alpha), sind(theta)*sind(alpha), a*cosd(theta);
+     sind(theta), cosd(theta)*cosd(alpha), -cosd(theta)*sind(alpha), a*sind(theta);
+     0, sind(alpha), cosd(alpha), d;
+     0, 0, 0, 1];
+end
