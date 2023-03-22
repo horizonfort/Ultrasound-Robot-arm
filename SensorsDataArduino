@@ -1,0 +1,204 @@
+#define encoder1a 18
+#define encoder1b 8
+
+int counter1 = 0;
+int state1a;
+int lastState1a;
+
+#define encoder2a 19
+#define encoder2b 9
+
+int counter2 = 0;
+int state2a;
+int lastState2a;
+
+#define encoder3a 20
+#define encoder3b 10
+
+int counter3 = 0;
+int state3a;
+int lastState3a;
+
+#define encoder4a 21
+#define encoder4b 11
+
+int counter4 = 0;
+int state4a;
+int lastState4a;
+
+#define MEASUREMENT_NOISE_VARIANCE 0.5  
+#define SYSTEM_NOISE_VARIANCE 0.5  
+#define ALPHA 1 
+
+const int numReadings = 5;
+const int numReadings2 = 5;
+
+float readings[numReadings];     
+int readIndex = 0;             
+float total = 0;                
+float average = 0;              
+
+float previousValue = 0;
+float stateEstimate = 0;
+float stateCovariance = 0;
+
+float readings2[numReadings2];      
+int readIndex2 = 0;              
+float total2 = 0;                
+float average2 = 0;                
+
+float previousValue2 = 0;
+float stateEstimate2 = 0;
+float stateCovariance2 = 0;
+
+void setup() {
+  Serial.begin (115200);
+
+  pinMode (encoder1a, INPUT);
+  pinMode (encoder1b, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encoder1a), isr1, CHANGE);
+  lastState1a = digitalRead(encoder1a);
+
+  pinMode (encoder2a, INPUT);
+  pinMode (encoder2b, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encoder2a), isr2, CHANGE);
+  lastState2a = digitalRead(encoder2a);
+
+  pinMode (encoder3a, INPUT);
+  pinMode (encoder3b, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encoder3a), isr3, CHANGE);
+  lastState3a = digitalRead(encoder3a);
+
+  pinMode (encoder4a, INPUT);
+  pinMode (encoder4b, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encoder4a), isr4, CHANGE);
+  lastState4a = digitalRead(encoder4a);
+
+
+
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    readings[thisReading] = 0;
+  }
+  for (int thisReading2 = 0; thisReading2 < numReadings2; thisReading2++) {
+    readings2[thisReading2] = 0;
+  }
+
+}
+
+void loop() {
+  static unsigned long lastTime = millis();
+  
+  moving_average1();
+  moving_average2();
+
+  //float voltage1 = stateEstimate * (4.86 / 1023.0);
+  //float voltage2 = stateEstimate2 * (4.86 / 1023.0);
+
+  float voltage1 = analogRead(A14) * (4.86 / 1023.0);
+  float voltage2 = analogRead(A15) * (4.86 / 1023.0);
+
+  float angle2 = -(voltage1 - 2.32) * 72;
+  float angle1 = -(voltage2 - 2.45) * 72;
+
+  unsigned long interval = millis() - lastTime;
+  lastTime = millis();
+
+  String data = String(counter1 * 0.043959) + "," + String(counter2 * 0.043959) + "," + String(counter3 * 0.043959) + "," + String(-counter4 * 0.043959)+ "," + String(angle1) + "," + String(angle2) + "," + String(interval);
+  Serial.println(data);
+  delay(20);
+}
+
+void moving_average1() {
+  total = total - readings[readIndex];
+  readings[readIndex] = analogRead(A14);
+  total = total + readings[readIndex];
+  readIndex = readIndex + 1;
+  if (readIndex >= numReadings) {
+    readIndex = 0;
+  }
+  average = total / numReadings;
+  kalman1();
+}
+
+void kalman1() {
+  float rawValue = average;
+  float filteredValue = previousValue + (average - previousValue) * ALPHA;
+  previousValue = filteredValue;
+  float predictedState = stateEstimate;
+  float predictedCovariance = stateCovariance + SYSTEM_NOISE_VARIANCE;
+  float kalmanGain = predictedCovariance / (predictedCovariance + MEASUREMENT_NOISE_VARIANCE);
+  stateEstimate = predictedState + kalmanGain * (filteredValue - predictedState);
+  stateCovariance = (1 - kalmanGain) * predictedCovariance;
+}
+
+void moving_average2() {
+  total2 = total2 - readings2[readIndex2];
+  readings2[readIndex2] = analogRead(A15);
+  total2 = total2 + readings2[readIndex2];
+  readIndex2 = readIndex2 + 1;
+  if (readIndex2 >= numReadings2) {
+    readIndex2 = 0;
+  }
+  average2 = total2 / numReadings2;
+  kalman2();
+}
+
+void kalman2() {
+  float rawValue2 = average2;
+  float filteredValue2 = previousValue2 + (average2 - previousValue2) * ALPHA;
+  previousValue2 = filteredValue2;
+  float predictedState2 = stateEstimate2;
+  float predictedCovariance2 = stateCovariance2 + SYSTEM_NOISE_VARIANCE;
+  float kalmanGain2 = predictedCovariance2 / (predictedCovariance2 + MEASUREMENT_NOISE_VARIANCE);
+  stateEstimate2 = predictedState2 + kalmanGain2 * (filteredValue2 - predictedState2);
+  stateCovariance2 = (1 - kalmanGain2) * predictedCovariance2;
+}
+
+
+void isr1() {
+  state1a = digitalRead(encoder1a); 
+  if (state1a != lastState1a) {
+    if (digitalRead(encoder1b) != state1a) {
+      counter1 ++;
+    } else {
+      counter1 --;
+    }
+  }
+  lastState1a = state1a;
+}
+
+void isr2() {
+  state2a = digitalRead(encoder2a);
+  if (state2a != lastState2a) {
+    if (digitalRead(encoder2b) != state2a) {
+      counter2 ++;
+    } else {
+      counter2 --;
+    }
+  }
+  lastState2a = state2a; 
+}
+
+void isr3() {
+  state3a = digitalRead(encoder3a); 
+  if (state3a != lastState3a) {
+    if (digitalRead(encoder3b) != state3a) {
+      counter3 ++;
+    } else {
+      counter3 --;
+    }
+  }
+  lastState3a = state3a;
+}
+
+void isr4() {
+  state4a = digitalRead(encoder4a); 
+  if (state4a != lastState4a) {
+    if (digitalRead(encoder4b) != state4a) {
+      counter4 ++;
+    } else {
+      counter4 --;
+    }
+  }
+  lastState4a = state4a;
+} 
